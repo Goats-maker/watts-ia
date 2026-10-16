@@ -1,0 +1,13 @@
+# Secretos locales — jamás subir (API key, contraseña de BD)
+config.local.php
+
+# Entorno
+.env
+
+# Sistema
+Thumbs.db
+.DS_Store
+*.log
+
+# PHP
+/vendor/
