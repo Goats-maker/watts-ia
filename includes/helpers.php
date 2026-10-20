@@ -420,3 +420,420 @@ function planAguaLocal(float $m3, array $ranking): array
         'ahorro_litros_total' => round($litrosTotal, 0),
     ];
 }
+
+/* ------------------------------------------------------------------
+ |  Módulo de RECICLAJE — datos, equivalencias y Plan B
+ * ------------------------------------------------------------------ */
+
+/** Últimos residuos registrados por el hogar (más recientes primero). */
+function listaResiduos(int $hogarId, int $limite = 50): array
+{
+    $st = db()->prepare(
+        'SELECT r.*, g.categoria, g.destino
+         FROM residuos r
+         LEFT JOIN guias_reciclaje g ON g.material = r.material
+         WHERE r.hogar_id = ?
+         ORDER BY r.semana DESC, r.id DESC
+         LIMIT ' . max(1, $limite)
+    );
+    $st->execute([$hogarId]);
+    return $st->fetchAll();
+}
+
+/** Kilos reciclados por semana (para la gráfica). */
+function residuosPorSemana(int $hogarId, int $semanas = 8): array
+{
+    $st = db()->prepare(
+        'SELECT semana, SUM(kg_aprox) AS kg, COUNT(*) AS registros
+         FROM residuos
+         WHERE hogar_id = ? AND semana >= (CURDATE() - INTERVAL ? WEEK)
+         GROUP BY semana ORDER BY semana ASC'
+    );
+    $st->execute([$hogarId, $semanas]);
+    return $st->fetchAll();
+}
+
+/** Resumen por material: cuántos kg y qué % del total. */
+function residuosPorMaterial(int $hogarId): array
+{
+    $st = db()->prepare(
+        'SELECT r.material, g.categoria, SUM(r.kg_aprox) AS kg, SUM(r.cantidad) AS cantidad
+         FROM residuos r
+         LEFT JOIN guias_reciclaje g ON g.material = r.material
+         WHERE r.hogar_id = ?
+         GROUP BY r.material, g.categoria
+         ORDER BY kg DESC'
+    );
+    $st->execute([$hogarId]);
+    $filas = $st->fetchAll();
+    $total = array_sum(array_column($filas, 'kg'));
+    foreach ($filas as &$f) {
+        $f['pct'] = $total > 0 ? ((float) $f['kg'] / $total) * 100 : 0.0;
+    }
+    unset($f);
+    return ['materiales' => $filas, 'total_kg' => $total];
+}
+
+/** Catálogo completo de guías (Plan B). */
+function guiasReciclaje(): array
+{
+    return db()->query('SELECT * FROM guias_reciclaje ORDER BY material')->fetchAll();
+}
+
+/** Guía de un material (busca exacta y después parecida). */
+function guiaDe(string $material): ?array
+{
+    $st = db()->prepare('SELECT * FROM guias_reciclaje WHERE material = ?');
+    $st->execute([$material]);
+    if ($g = $st->fetch()) {
+        return $g;
+    }
+    $st = db()->prepare('SELECT * FROM guias_reciclaje WHERE material LIKE ? LIMIT 1');
+    $st->execute(['%' . $material . '%']);
+    $g = $st->fetch();
+    return $g ?: null;
+}
+
+/**
+ * Clasificación sin internet (Plan B): responde desde el catálogo local
+ * con la misma forma que devolvería la IA.
+ */
+function clasificacionLocal(string $material): array
+{
+    $g = guiaDe($material);
+    if (!$g) {
+        return [
+            'material'         => $material,
+            'tipo_plastico'    => null,
+            'reciclable'       => 'depende',
+            'preparacion'      => ['Sepáralo de la basura común', 'Preguntá en tu centro de acopio si lo reciben'],
+            'reutilizacion'    => ['Buscale otra función antes de tirarlo'],
+            'destino_sugerido' => 'Centro de acopio',
+            'nivel_confianza'  => 0.4,
+            'notas'            => 'Guía local: este material no está en el catálogo.',
+            'fuente'           => 'local',
+        ];
+    }
+    return [
+        'material'         => $g['material'],
+        'tipo_plastico'    => null,
+        'reciclable'       => $g['reciclable'],
+        'preparacion'      => json_decode((string) $g['pasos'], true) ?: [],
+        'reutilizacion'    => json_decode((string) $g['reutilizacion'], true) ?: [],
+        'destino_sugerido' => $g['destino'],
+        'nivel_confianza'  => 0.8,
+        'notas'            => 'Guía local del catálogo (no necesitó internet).',
+        'fuente'           => 'local',
+    ];
+}
+
+/**
+ * Equivalencias tangibles del reciclaje.
+ * Los factores son APROXIMADOS y configurables en config.php.
+ */
+function equivalenciasReciclaje(array $porMaterial): array
+{
+    $factoresCo2   = (array) cfg('co2_por_kg_reciclado', []);
+    $factoresValor = (array) cfg('valor_usd_por_kg', []);
+
+    $co2 = 0.0;
+    $valor = 0.0;
+    $detalle = [];
+
+    foreach ($porMaterial as $fila) {
+        $kg       = (float) ($fila['kg'] ?? 0);
+        $material = (string) ($fila['material'] ?? '');
+        $cat      = (string) ($fila['categoria'] ?? '');
+        $cat      = $cat !== '' && isset($factoresCo2[$cat]) ? $cat : 'otro';
+
+        $co2Fila   = $kg * (float) ($factoresCo2[$cat] ?? 0.5);
+        $valorFila = $kg * (float) ($factoresValor[$cat] ?? 0.10);
+
+        $co2   += $co2Fila;
+        $valor += $valorFila;
+        $detalle[] = [
+            'material' => $material,
+            'kg'       => $kg,
+            'co2_kg'   => round($co2Fila, 2),
+            'valor_usd'=> round($valorFila, 2),
+        ];
+    }
+
+    return [
+        'co2_kg'      => round($co2, 1),
+        'valor_usd'   => round($valor, 2),
+        'aproximado'  => true,
+        'detalle'     => $detalle,
+    ];
+}
+
+/** Plan de reciclaje sin internet: plantillas por kilos registrados al mes. */
+function planReciclajeLocal(array $porMaterial): array
+{
+    $totalKg = (float) ($porMaterial['total_kg'] ?? 0);
+    $materiales = $porMaterial['materiales'] ?? [];
+    $top = $materiales[0] ?? null;
+
+    $acc = [];
+    if ($totalKg >= 15) {
+        $acc[] = ['titulo' => 'Separar en casa', 'accion' => 'Poné dos bolsos: uno para plásticos y papel, otro para lo demás. Etiquetalos con cartón.', 'kg_meta' => 8, 'valor_estimado_usd' => 1.6];
+        $acc[] = ['titulo' => 'Día fijo de entrega', 'accion' => 'Elegí un día del mes para llevar todo al centro de acopio y no acumular.', 'kg_meta' => 5, 'valor_estimado_usd' => 1.2];
+        $acc[] = ['titulo' => 'Aprovechar el material más frecuente', 'accion' => 'Si el más repetido es el cartón, guardalo plano y seco para reutilizar cajas.', 'kg_meta' => 3, 'valor_estimado_usd' => 0.3];
+    } elseif ($totalKg >= 5) {
+        $acc[] = ['titulo' => 'Sumar un material más', 'accion' => 'Aparte de lo que ya separás, empezá con las botellas PET: enjuagá y aplastá.', 'kg_meta' => 3, 'valor_estimado_usd' => 0.8];
+        $acc[] = ['titulo' => 'Reutilizar antes de reciclar', 'accion' => 'Cada frasco o caja que dure tres usos más ya no es residuo.', 'kg_meta' => 2, 'valor_estimado_usd' => 0.5];
+    } else {
+        $acc[] = ['titulo' => 'Empezar por lo más simple', 'accion' => 'Juntá papel y cartón durante una semana: es lo que más pesa y lo más fácil de llevar.', 'kg_meta' => 2, 'valor_estimado_usd' => 0.2];
+        $acc[] = ['titulo' => 'Revisar la basura antes de tirar', 'accion' => 'Cada día, mirá qué tiraste: siempre hay algo reciclable o reutilizable.', 'kg_meta' => 1, 'valor_estimado_usd' => 0.2];
+    }
+
+    if ($top && (float) $top['pct'] >= 30) {
+        $acc[] = [
+            'titulo'             => 'Atacar al más repetido: ' . $top['material'],
+            'accion'             => 'Es tu material más frecuente (' . number_format((float) $top['pct'], 0) . '% de lo que registraste). Buscale una salida fija.',
+            'kg_meta'            => round(max(1, (float) $top['kg'] * 0.3), 1),
+            'valor_estimado_usd' => 0.4,
+        ];
+    }
+
+    $metaKg = round(array_sum(array_column($acc, 'kg_meta')), 1);
+
+    return [
+        'fuente'   => 'local',
+        'resumen'  => 'Plan de reciclaje generado sin internet (plantilla por kilos registrados: '
+            . number_format($totalKg, 1) . ' kg).',
+        'acciones' => $acc,
+        'pasos'    => [
+            'Separar en casa un material nuevo por semana.',
+            'Enjuagar y aplastar todo lo que salga reciclable.',
+            'Anotar cuántos kilos juntaste cada fin de semana.',
+            'Llevar el acopio al centro que corresponda y anotar qué se reutilizó.',
+        ],
+        'meta_kg'  => $metaKg,
+        'ingreso_estimado_usd' => round(array_sum(array_column($acc, 'valor_estimado_usd')), 2),
+    ];
+}
+
+/** Directorio comunitario de centros de acopio (solo datos públicos de lugares). */
+function centrosAcopio(): array
+{
+    return db()->query('SELECT * FROM centros_acopio ORDER BY zona, nombre')->fetchAll();
+}
+
+/** Campañas y jornadas del panel comunitario. */
+function campanas(): array
+{
+    return db()->query('SELECT * FROM campanas ORDER BY fecha IS NULL, fecha, id DESC')->fetchAll();
+}
+
+/**
+ * Panel comunitario: datos agregados y anónimos (sin alias de hogares ni nada
+ * que permita identificar a una familia).
+ */
+function resumenComunidad(): array
+{
+    // Kilos reciclados por material en toda la comunidad
+    $porMaterial = db()->query(
+        'SELECT r.material, SUM(r.kg_aprox) AS kg
+         FROM residuos r
+         GROUP BY r.material ORDER BY kg DESC LIMIT 10'
+    )->fetchAll();
+
+    $totalKg = array_sum(array_column($porMaterial, 'kg'));
+
+    // Ahorros del último plan de cada hogar (energía y agua)
+    $energia = (float) db()->query(
+        'SELECT COALESCE(SUM(t.ahorro_total), 0) FROM (
+            SELECT hogar_id, MAX(id) AS max_id FROM planes_ahorro GROUP BY hogar_id
+         ) ult
+         JOIN planes_ahorro t ON t.id = ult.max_id'
+    )->fetchColumn();
+
+    $agua = (float) db()->query(
+        'SELECT COALESCE(SUM(t.ahorro_usd), 0) FROM (
+            SELECT hogar_id, MAX(id) AS max_id FROM planes_agua GROUP BY hogar_id
+         ) ult
+         JOIN planes_agua t ON t.id = ult.max_id'
+    )->fetchColumn();
+
+    $litros = (float) db()->query(
+        'SELECT COALESCE(SUM(t.ahorro_litros), 0) FROM (
+            SELECT hogar_id, MAX(id) AS max_id FROM planes_agua GROUP BY hogar_id
+         ) ult
+         JOIN planes_agua t ON t.id = ult.max_id'
+    )->fetchColumn();
+
+    $hogares = (int) db()->query('SELECT COUNT(*) FROM hogares')->fetchColumn();
+    $residuos = (int) db()->query('SELECT COUNT(*) FROM residuos')->fetchColumn();
+
+    return [
+        'materiales'      => $porMaterial,
+        'total_kg'        => $totalKg,
+        'ahorro_usd'      => round($energia + $agua, 2),
+        'ahorro_litros'   => round($litros, 0),
+        'ahorro_m3'       => round($litros / 1000, 1),
+        'hogares'         => $hogares,
+        'registros'       => $residuos,
+    ];
+}
+
+/* ------------------------------------------------------------------
+ |  PLAN UNIFICADO Y RETO GUARDIANES (los tres pilares a la vez)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Diagnóstico de los tres pilares para el plan unificado.
+ * SOLO números: nunca alias, nombres ni datos personales.
+ */
+function datosUnificados(int $hogarId): array
+{
+    $stH = db()->prepare('SELECT * FROM hogares WHERE id = ?');
+    $stH->execute([$hogarId]);
+    $hogar = $stH->fetch() ?: null;
+
+    $personas    = personasDe($hogar);
+    $tarifa      = tarifaDe($hogar);
+    $tarifaAgua  = tarifaAguaDe($hogar);
+
+    $ultimoE  = ultimoRecibo($hogarId);
+    $ultimoA  = ultimoReciboAgua($hogarId);
+    $resumenR = residuosPorMaterial($hogarId);
+    $equiv    = equivalenciasReciclaje($resumenR['materiales']);
+
+    $litrosDia = litrosDiaTotales($hogarId, $personas);
+    $rankingAp = rankingAparatos($hogarId, $tarifa, $ultimoE ? (float) $ultimoE['kwh'] : 0.0);
+
+    // Último plan de cada pilar (si existe) para saber cuánto ya se comprometió.
+    $stE = db()->prepare('SELECT ahorro_total FROM planes_ahorro WHERE hogar_id = ? ORDER BY id DESC LIMIT 1');
+    $stE->execute([$hogarId]);
+    $ahorroPlanE = (float) ($stE->fetchColumn() ?: 0);
+
+    $stA = db()->prepare('SELECT ahorro_usd, ahorro_litros FROM planes_agua WHERE hogar_id = ? ORDER BY id DESC LIMIT 1');
+    $stA->execute([$hogarId]);
+    $planA = $stA->fetch() ?: null;
+
+    return [
+        'tipo_hogar' => $hogar['tipo'] ?? 'hogar',
+        'personas'   => $personas,
+        'energia'    => [
+            'kwh_mes'      => $ultimoE ? (float) $ultimoE['kwh'] : 0.0,
+            'monto_mes'    => $ultimoE ? (float) $ultimoE['monto'] : 0.0,
+            'tarifa'       => $tarifa,
+            'ahorro_plan'  => $ahorroPlanE,
+            'top_devorador'=> ($rankingAp[0]['nombre'] ?? '') . ' (' . round($rankingAp[0]['pct'] ?? 0) . '% de la factura)',
+        ],
+        'agua'       => [
+            'm3_mes'       => $ultimoA ? (float) $ultimoA['m3'] : round(m3Mes($litrosDia), 2),
+            'monto_mes'    => $ultimoA ? (float) $ultimoA['monto'] : 0.0,
+            'tarifa'       => $tarifaAgua,
+            'litros_dia'   => round($litrosDia, 0),
+            'ahorro_plan'  => $planA ? (float) $planA['ahorro_usd'] : 0.0,
+            'ahorro_litros'=> $planA ? (int) $planA['ahorro_litros'] : 0,
+        ],
+        'reciclaje'  => [
+            'kg_mes'         => round((float) $resumenR['total_kg'], 2),
+            'co2_evitado_kg' => $equiv['co2_kg'],
+            'valor_estimado' => $equiv['valor_usd'],
+            'materiales_top' => array_slice(array_map(fn($m) => $m['material'], $resumenR['materiales']), 0, 3),
+        ],
+    ];
+}
+
+/** Plan unificado sin internet: una acción por pilar + reto de 4 semanas. */
+function planUnificadoLocal(array $d): array
+{
+    $acc = [];
+
+    // Energía
+    $acc[] = [
+        'pilar' => 'energia', 'titulo' => 'Apagar lo que está en espera',
+        'accion' => 'Sacá de la corriente cargadores y TV cuando no se usan: es lo más fácil y no cuesta nada.',
+        'costo_estimado_usd' => 0, 'ahorro_usd_mes' => 2.5, 'ahorro_litros_mes' => 0, 'kg_meta' => 0,
+    ];
+    if (!empty($d['energia']['top_devorador'])) {
+        $acc[] = [
+            'pilar' => 'energia', 'titulo' => 'Bajar el ritmo de ' . $d['energia']['top_devorador'],
+            'accion' => 'Es lo que más consume: recudile 30 minutos de uso al día.',
+            'costo_estimado_usd' => 0, 'ahorro_usd_mes' => 3.0, 'ahorro_litros_mes' => 0, 'kg_meta' => 0,
+        ];
+    }
+
+    // Agua
+    $acc[] = [
+        'pilar' => 'agua', 'titulo' => 'Duchas de 5 minutos',
+        'accion' => 'Poné un temporizador y cerrá la llave mientras te enjabonás.',
+        'costo_estimado_usd' => 0, 'ahorro_usd_mes' => 2.2, 'ahorro_litros_mes' => 1800, 'kg_meta' => 0,
+    ];
+    $acc[] = [
+        'pilar' => 'agua', 'titulo' => 'Revisar fugas de sanitarios',
+        'accion' => 'Un gotero constante desperdicia miles de litros al mes: revisalo con colorante en el tanque.',
+        'costo_estimado_usd' => 2, 'ahorro_usd_mes' => 1.5, 'ahorro_litros_mes' => 1200, 'kg_meta' => 0,
+    ];
+
+    // Reciclaje
+    $acc[] = [
+        'pilar' => 'reciclaje', 'titulo' => 'Separar plástico y cartón',
+        'accion' => 'Dos bolsos en casa y enjuagar todo lo que salga reciclable.',
+        'costo_estimado_usd' => 0, 'ahorro_usd_mes' => 0.5, 'ahorro_litros_mes' => 0, 'kg_meta' => 6,
+    ];
+    $acc[] = [
+        'pilar' => 'reciclaje', 'titulo' => 'Reutilizar antes de tirar',
+        'accion' => 'Cada frasco o caja que dure tres usos más ya no es basura.',
+        'costo_estimado_usd' => 0, 'ahorro_usd_mes' => 0.5, 'ahorro_litros_mes' => 0, 'kg_meta' => 3,
+    ];
+
+    return [
+        'fuente'   => 'local',
+        'resumen'  => 'Plan general generado sin internet (plantilla con una acción por pilar). '
+            . 'Energía: ' . usd($d['energia']['monto_mes']) . ' al mes · '
+            . 'Agua: ' . num($d['agua']['m3_mes'], 1) . ' m³/mes · '
+            . 'Reciclaje: ' . num($d['reciclaje']['kg_mes'], 1) . ' kg registrados.',
+        'acciones' => $acc,
+        'reto'     => [
+            'titulo' => 'Reto Guardianes del Planeta · 30 días',
+            'pasos'  => [
+                'Semana 1: apagá lo que esté en espera y medí cuánto se nota.',
+                'Semana 2: duchas de 5 minutos y revisá las fugas del baño.',
+                'Semana 3: separá plástico y cartón, y llevá el acopio.',
+                'Semana 4: compará los números con los del mes anterior y celebrá.',
+            ],
+        ],
+        'ahorro_usd_total'    => round(array_sum(array_column($acc, 'ahorro_usd_mes')), 2),
+        'ahorro_litros_total' => (int) array_sum(array_column($acc, 'ahorro_litros_mes')),
+        'kg_meta_total'       => (float) array_sum(array_column($acc, 'kg_meta')),
+    ];
+}
+
+/**
+ * Insignias del reto unificado: se calculan con números, nunca con datos personales.
+ * $tiene es la lista ya guardada; se devuelve la unión con las nuevas ganadas.
+ */
+function insigniasDelReto(int $dias, array $d, array $tiene): array
+{
+    $nuevas = [];
+
+    if ($dias >= 1)  $nuevas[] = 'Guardián del planeta';
+    if ($dias >= 7)  $nuevas[] = 'Racha de 7 días';
+    if ($dias >= 15) $nuevas[] = 'A la mitad del camino';
+    if ($dias >= 30) $nuevas[] = 'Maestro Guardian';
+    if (($d['energia']['ahorro_plan'] ?? 0) > 0)    $nuevas[] = 'Cazador de watts';
+    if (($d['agua']['ahorro_plan'] ?? 0) > 0)       $nuevas[] = 'Guardián del agua';
+    if (($d['reciclaje']['kg_mes'] ?? 0) >= 5)      $nuevas[] = 'Eco-héroe';
+    if (($d['reciclaje']['kg_mes'] ?? 0) >= 15)     $nuevas[] = 'Campeón del reciclaje';
+
+    return array_values(array_unique(array_merge($tiene, $nuevas)));
+}
+
+/** Último reto Guardianes del Planeta del hogar (o null). */
+function retoGuardianes(int $hogarId): ?array
+{
+    $st = db()->prepare('SELECT * FROM reto_guardianes WHERE hogar_id = ? ORDER BY id DESC LIMIT 1');
+    $st->execute([$hogarId]);
+    $reto = $st->fetch() ?: null;
+    if (!$reto) {
+        return null;
+    }
+    $reto['insignias_lista'] = json_decode((string) $reto['insignias'], true) ?: [];
+    $reto['metas_lista']     = json_decode((string) $reto['metas'], true) ?: [];
+    return $reto;
+}

@@ -6,6 +6,18 @@ $hogarId = (int) $hogar['id'];
 $tarifa  = tarifaDe($hogar);
 $ultimo  = ultimoRecibo($hogarId);
 
+// Plan unificado (energía + agua + reciclaje) y su reto de 30 días
+$stU = db()->prepare('SELECT * FROM planes_unificados WHERE hogar_id = ? ORDER BY id DESC LIMIT 1');
+$stU->execute([$hogarId]);
+$unificado = $stU->fetch() ?: null;
+$accionesU = $unificado ? (json_decode((string) $unificado['acciones'], true) ?: []) : [];
+$retoU     = $unificado ? (json_decode((string) $unificado['reto'], true) ?: []) : [];
+$retoG     = retoGuardianes($hogarId);
+
+$coloresPilar = ['energia' => 'var(--pilar-energia)', 'agua' => 'var(--pilar-agua)', 'reciclaje' => 'var(--pilar-reciclaje)'];
+$iconosPilar  = ['energia' => 'bi-lightning-charge-fill', 'agua' => 'bi-droplet-fill', 'reciclaje' => 'bi-recycle'];
+$etiqPilar    = ['energia' => 'Energía', 'agua' => 'Agua', 'reciclaje' => 'Reciclaje'];
+
 $st = db()->prepare('SELECT * FROM planes_ahorro WHERE hogar_id = ? ORDER BY id DESC LIMIT 1');
 $st->execute([$hogarId]);
 $plan = $st->fetch() ?: null;
@@ -192,6 +204,155 @@ $porcentaje   = (float) $ultimo['monto'] > 0 ? $ahorro / (float) $ultimo['monto'
   <?php endif; ?>
 <?php endif; ?>
 
+<!-- ==================== PLAN UNIFICADO: LOS TRES PILARES ==================== -->
+<div class="card card-tarifa mt-4 mb-4">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <h2 class="h5 mb-0"><i class="bi bi-shield-shaded"></i> Guardianes del Planeta · un solo plan</h2>
+      <?php if ($unificado): ?>
+        <span class="chip"><?= $unificado['origen'] === 'ia' ? 'redactado por la IA' : 'plan sin internet' ?></span>
+      <?php endif; ?>
+    </div>
+    <p class="small text-secondary">
+      Los tres pilares a la vez: energía, agua y reciclaje. La IA recibe solo números
+      (sin nombres ni datos personales) y arma el plan con su reto de 30 días.
+    </p>
+
+    <div class="text-center mb-3">
+      <button id="btnPlanUnificado" class="btn btn-warning fw-semibold">
+        <i class="bi bi-stars"></i> <?= $unificado ? 'Generar un plan general nuevo' : 'Generar mi plan Guardianes con IA' ?>
+      </button>
+      <div id="estadoPlanUnificado" class="small text-secondary mt-2"></div>
+    </div>
+
+    <?php if ($unificado): ?>
+
+      <p class="alert alert-light border"><?= e($unificado['resumen']) ?></p>
+
+      <div class="row g-3 text-center mb-3">
+        <div class="col-4">
+          <div class="kpi" style="color:var(--pilar-energia)"><?= usd($unificado['ahorro_usd']) ?></div>
+          <div class="small text-secondary">ahorro mensual estimado</div>
+        </div>
+        <div class="col-4">
+          <div class="kpi" style="color:var(--pilar-agua)"><?= num($unificado['ahorro_litros'], 0) ?><small class="fs-6"> L</small></div>
+          <div class="small text-secondary">agua ahorrada al mes</div>
+        </div>
+        <div class="col-4">
+          <div class="kpi" style="color:var(--pilar-reciclaje)"><?= num($unificado['kg_meta'], 1) ?><small class="fs-6"> kg</small></div>
+          <div class="small text-secondary">meta de reciclaje mensual</div>
+        </div>
+      </div>
+
+      <div class="table-responsive mb-4">
+        <table class="table align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Pilar</th><th>Acción</th>
+              <th class="text-end">Costo</th><th class="text-end">Ahorro</th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($accionesU as $a):
+              $p = (string) ($a['pilar'] ?? 'energia');
+              if (!isset($coloresPilar[$p])) $p = 'energia';
+              $ahorroU = (float) ($a['ahorro_usd_mes'] ?? 0);
+          ?>
+            <tr>
+              <td class="text-nowrap">
+                <span class="chip" style="color:<?= $coloresPilar[$p] ?>;border-color:<?= $coloresPilar[$p] ?>;background:transparent">
+                  <i class="bi <?= $iconosPilar[$p] ?>"></i> <?= e($etiqPilar[$p]) ?>
+                </span>
+              </td>
+              <td>
+                <strong><?= e($a['titulo'] ?? 'Acción') ?></strong>
+                <div class="small text-secondary"><?= e($a['accion'] ?? '') ?></div>
+                <?php if ((float) ($a['ahorro_litros_mes'] ?? 0) > 0): ?>
+                  <div class="small" style="color:var(--pilar-agua)">
+                    <i class="bi bi-droplet"></i> <?= num($a['ahorro_litros_mes'], 0) ?> litros al mes
+                  </div>
+                <?php endif; ?>
+                <?php if ((float) ($a['kg_meta'] ?? 0) > 0): ?>
+                  <div class="small" style="color:var(--pilar-reciclaje)">
+                    <i class="bi bi-recycle"></i> <?= num($a['kg_meta'], 1) ?> kg por mes
+                  </div>
+                <?php endif; ?>
+              </td>
+              <td class="text-end"><?= ((float) ($a['costo_estimado_usd'] ?? 0)) > 0 ? usd($a['costo_estimado_usd']) : 'gratis' ?></td>
+              <td class="text-end fw-semibold text-success"><?= usd($ahorroU) ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Reto unificado -->
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h3 class="h6 mb-0">
+          <i class="bi bi-trophy-fill text-warning"></i>
+          <?= e($retoU['titulo'] ?? 'Reto Guardianes del Planeta · 30 días') ?>
+        </h3>
+        <?php if ($retoG): ?>
+          <span class="chip"><?= (int) $retoG['puntos'] ?> puntos</span>
+        <?php endif; ?>
+      </div>
+
+      <?php if ($retoG):
+          $pctRetoG = (int) min(100, round($retoG['dias_hechos'] / max(1, $retoG['meta_dias']) * 100));
+          $metasG = $retoG['metas_lista'];
+      ?>
+        <div class="progress mb-2" style="height: 18px;">
+          <div class="progress-bar" role="progressbar"
+               style="width: <?= $pctRetoG ?>%; background: linear-gradient(90deg, var(--pilar-energia), var(--pilar-agua), var(--pilar-reciclaje))"
+               aria-valuenow="<?= $pctRetoG ?>" aria-valuemin="0" aria-valuemax="100">
+            <?= (int) $retoG['dias_hechos'] ?> / <?= (int) $retoG['meta_dias'] ?> días
+          </div>
+        </div>
+
+        <p class="small text-secondary">
+          Empezó el <?= date('d/m/Y', strtotime($retoG['inicio'])) ?>. Metas:
+          <strong style="color:var(--pilar-energia)"><?= usd($metasG['usd'] ?? 0) ?></strong> de ahorro,
+          <strong style="color:var(--pilar-agua)"><?= num($metasG['litros'] ?? 0, 0) ?> litros</strong> de agua
+          y <strong style="color:var(--pilar-reciclaje)"><?= num($metasG['kg'] ?? 0, 1) ?> kg</strong> reciclados por mes.
+        </p>
+
+        <form id="formRetoGuardianes" class="mb-3">
+          <button class="btn btn-outline-primary fw-semibold" <?= $pctRetoG >= 100 ? 'disabled' : '' ?>>
+            <i class="bi bi-check2-circle"></i> Hoy cuidé los tres pilares · avanzar un día
+          </button>
+        </form>
+        <div id="estadoReto" class="small mb-3"></div>
+
+        <?php if ($retoG['insignias_lista']): ?>
+          <h3 class="h6">Insignias ganadas</h3>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <?php foreach ($retoG['insignias_lista'] as $ins): ?>
+              <span class="chip"><i class="bi bi-trophy-fill text-warning"></i> <?= e($ins) ?></span>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+      <?php endif; ?>
+
+      <?php if (!empty($retoU['pasos'])): ?>
+        <h3 class="h6">Cómo va el mes, semana por semana</h3>
+        <ol class="list-unstyled mb-0">
+          <?php foreach ($retoU['pasos'] as $i => $paso): ?>
+            <li class="paso-reto ps-3 mb-2">
+              <strong>Semana <?= $i + 1 ?>:</strong> <?= e(pasoSinPrefijo((string) $paso)) ?>
+            </li>
+          <?php endforeach; ?>
+        </ol>
+      <?php endif; ?>
+
+    <?php else: ?>
+      <p class="text-secondary text-center mb-0">
+        Todavía no hay plan general. Tocá el botón de arriba: la IA mira tus tres números
+        (kWh, m³ y kilos reciclados) y arma un plan con metas de cada pilar.
+      </p>
+    <?php endif; ?>
+  </div>
+</div>
+
 <script>
 (function () {
   const btn    = document.getElementById('btnGenerar');
@@ -212,6 +373,55 @@ $porcentaje   = (float) $ultimo['monto'] > 0 ? $ahorro / (float) $ultimo['monto'
       btn.disabled = false;
     }
   });
+})();
+</script>
+
+<script>
+(function () {
+  /* ---------- Plan unificado (tres pilares) ---------- */
+  const btnU = document.getElementById('btnPlanUnificado');
+  const estadoU = document.getElementById('estadoPlanUnificado');
+  if (btnU) {
+    btnU.addEventListener('click', async function () {
+      btnU.disabled = true;
+      estadoU.textContent = 'La IA está mirando tus tres pilares (kWh, m³ y kilos)…';
+      try {
+        const r = await fetch('api/generar_plan_unificado.php', { method: 'POST' });
+        const res = await r.json();
+        if (!res.ok) throw new Error(res.error || 'No se pudo generar el plan.');
+        estadoU.textContent = res.aviso || 'Listo. Recargando…';
+        setTimeout(function () { location.reload(); }, res.aviso ? 1800 : 600);
+      } catch (err) {
+        estadoU.innerHTML = '<span class="text-danger">' + err.message + '</span>';
+        btnU.disabled = false;
+      }
+    });
+  }
+
+  /* ---------- Reto unificado ---------- */
+  const formReto = document.getElementById('formRetoGuardianes');
+  const estadoReto = document.getElementById('estadoReto');
+  if (formReto) {
+    formReto.addEventListener('submit', async function (ev) {
+      ev.preventDefault();
+      const btn = formReto.querySelector('button');
+      if (btn) btn.disabled = true;
+      try {
+        const r = await fetch('api/avanzar_reto_guardianes.php', { method: 'POST' });
+        const res = await r.json();
+        if (!res.ok) throw new Error(res.error || 'No se pudo avanzar el reto.');
+        let txt = 'Día ' + res.dias + ' de ' + res.meta_dias + ' · ' + res.puntos + ' puntos.';
+        if (res.nuevas && res.nuevas.length) {
+          txt += ' ¡Insignia nueva: ' + res.nuevas.join(', ') + '!';
+        }
+        estadoReto.innerHTML = '<i class="bi bi-trophy-fill text-warning"></i> ' + txt + ' Recargando…';
+        setTimeout(function () { location.reload(); }, 1500);
+      } catch (err) {
+        estadoReto.innerHTML = '<span class="text-danger">' + err.message + '</span>';
+        if (btn) btn.disabled = false;
+      }
+    });
+  }
 })();
 </script>
 

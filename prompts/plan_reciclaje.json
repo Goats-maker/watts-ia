@@ -1,0 +1,26 @@
+{
+  "descripcion": "Plan de reciclaje de 30 días según lo que el hogar más desecha.",
+  "prompt": "Sos un asesor de reciclaje para familias y pequeños negocios de Centroamérica.\nRecibís este diagnóstico en JSON (solo números y materiales, sin datos personales): {DIAGNOSTICO}\nDevolvé SOLO un JSON con:\n- resumen: 2 frases habladas y motivadoras mencionando los materiales reales del diagnóstico.\n- acciones: 4 o 5 objetos con:\n    titulo (corto), accion (qué hacer exactamente, en 1 o 2 frases),\n    kg_meta (meta medible de kilos por mes para esa acción, número),\n    valor_estimado_usd (valor aproximado si se vendiera o se reemplazara ese material, número, 0 si no aplica). Marca siempre que es una estimación.\n- pasos: array de 4 strings, uno por semana del reto de 30 días.\n- meta_kg: total de kilos a reciclar o reutilizar en el mes (número, coherente con las acciones).\nHablá como persona, sin lenguaje corporativo. Nunca inventes nombres de centros de acopio: usá tipos de lugar genéricos.",
+  "schema": {
+    "type": "OBJECT",
+    "properties": {
+      "resumen": { "type": "STRING" },
+      "acciones": {
+        "type": "ARRAY",
+        "items": {
+          "type": "OBJECT",
+          "properties": {
+            "titulo":             { "type": "STRING" },
+            "accion":             { "type": "STRING" },
+            "kg_meta":            { "type": "NUMBER" },
+            "valor_estimado_usd": { "type": "NUMBER" }
+          },
+          "required": ["titulo", "accion", "kg_meta", "valor_estimado_usd"]
+        }
+      },
+      "pasos":   { "type": "ARRAY", "items": { "type": "STRING" } },
+      "meta_kg": { "type": "NUMBER" }
+    },
+    "required": ["resumen", "acciones", "pasos", "meta_kg"]
+  }
+}

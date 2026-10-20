@@ -54,6 +54,63 @@ $sumatoriaKwh = array_sum(array_column($ranking, 'kwh'));
   </div>
 <?php endif; ?>
 
+<!-- Los tres pilares: energía, agua y reciclaje -->
+<?php
+$ultimoAgua = ultimoReciboAgua($hogarId);
+$resumenMat = residuosPorMaterial($hogarId);
+$kgTotal    = (float) $resumenMat['total_kg'];
+?>
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <a href="index.php" class="text-decoration-none">
+      <div class="card card-tarifa h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="etiqueta-ia text-secondary">Energía</div>
+              <div class="kpi" style="color:var(--pilar-energia)"><?= $ultimo ? num($ultimo['kwh'], 1) : '—' ?><small class="fs-6"> kWh</small></div>
+              <div class="small text-secondary"><?= $ultimo ? usd($ultimo['monto']) . ' este mes' : 'sin recibo todavía' ?></div>
+            </div>
+            <i class="bi bi-lightning-charge-fill fs-2" style="color:var(--pilar-energia)"></i>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a href="agua.php" class="text-decoration-none">
+      <div class="card card-tarifa h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="etiqueta-ia text-secondary">Agua</div>
+              <div class="kpi" style="color:var(--pilar-agua)"><?= $ultimoAgua ? num($ultimoAgua['m3'], 1) : '—' ?><small class="fs-6"> m³</small></div>
+              <div class="small text-secondary"><?= $ultimoAgua ? usd($ultimoAgua['monto']) . ' este mes' : 'sin recibo todavía' ?></div>
+            </div>
+            <i class="bi bi-droplet-fill fs-2" style="color:var(--pilar-agua)"></i>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+  <div class="col-md-4">
+    <a href="reciclaje.php" class="text-decoration-none">
+      <div class="card card-tarifa h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <div class="etiqueta-ia text-secondary">Reciclaje</div>
+              <div class="kpi" style="color:var(--pilar-reciclaje)"><?= num($kgTotal, 1) ?><small class="fs-6"> kg</small></div>
+              <div class="small text-secondary"><?= count($resumenMat['materiales']) ?> materiales registrados</div>
+            </div>
+            <i class="bi bi-recycle fs-2" style="color:var(--pilar-reciclaje)"></i>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
+
 <?php if (!$ultimo): ?>
   <header class="pagina-titulo text-center mb-5">
     <h1 class="h2 mb-2">Todavía no hay recibos</h1>

@@ -1,0 +1,35 @@
+{
+  "descripcion": "Plan unificado Guardianes del Planeta: energía, agua y reciclaje en un solo plan, con reto de 30 días.",
+  "prompt": "Sos un asesor de sostenibilidad para familias y pequeños negocios de Centroamérica.\nRecibís este diagnóstico en JSON (SOLO números de los tres pilares, sin ningún dato personal): {DIAGNOSTICO}\nDevolvé SOLO un JSON con:\n- resumen: 3 frases habladas y motivadoras que mencionen los números reales de energía, agua y reciclaje.\n- acciones: de 4 a 6 objetos, siempre cubriendo los TRES pilares (al menos una acción de cada uno), con:\n    pilar: exactamente \"energia\", \"agua\" o \"reciclaje\"\n    titulo: corto\n    accion: qué hacer, en 1 o 2 frases, concreta y medible\n    costo_estimado_usd: cuánto cuesta ponerla (número, 0 si es gratis)\n    ahorro_usd_mes: cuánto ahorra al mes en dólares (número; 0 si no aplica)\n    ahorro_litros_mes: cuántos litros de agua ahorra al mes (número; 0 si no es de agua)\n    kg_meta: kilos a reciclar o reutilizar al mes (número; 0 si no es de reciclaje)\n- reto: objeto con\n    titulo: \"Reto Guardianes del Planeta · 30 días\"\n    pasos: array de 4 strings, uno por semana, que combinen los tres pilares.\nReglas: el ahorro total debe ser coherente (nunca más del 35% de los gastos indicados).\nHablá como persona, sin lenguaje corporativo, en voseo centroamericano.",
+  "schema": {
+    "type": "OBJECT",
+    "properties": {
+      "resumen": { "type": "STRING" },
+      "acciones": {
+        "type": "ARRAY",
+        "items": {
+          "type": "OBJECT",
+          "properties": {
+            "pilar":               { "type": "STRING" },
+            "titulo":              { "type": "STRING" },
+            "accion":              { "type": "STRING" },
+            "costo_estimado_usd":  { "type": "NUMBER" },
+            "ahorro_usd_mes":      { "type": "NUMBER" },
+            "ahorro_litros_mes":   { "type": "NUMBER" },
+            "kg_meta":             { "type": "NUMBER" }
+          },
+          "required": ["pilar", "titulo", "accion", "costo_estimado_usd", "ahorro_usd_mes", "ahorro_litros_mes", "kg_meta"]
+        }
+      },
+      "reto": {
+        "type": "OBJECT",
+        "properties": {
+          "titulo": { "type": "STRING" },
+          "pasos":  { "type": "ARRAY", "items": { "type": "STRING" } }
+        },
+        "required": ["titulo", "pasos"]
+      }
+    },
+    "required": ["resumen", "acciones", "reto"]
+  }
+}

@@ -54,5 +54,16 @@ return [
     'tarifa_default' => 0.21,        // USD/kWh si el recibo de luz no trae tarifa
     'tarifa_agua_default' => 1.20,   // USD/m³ si el hogar todavía no tiene recibo de agua
     'co2_por_kwh'    => 0.42,        // kg CO2 por kWh (matriz eléctrica regional)
+
+    // Reciclaje — factores de REFERENCIA APROXIMADOS (varían según el país y el
+    // centro de acopio; se pueden ajustar acá sin tocar código).
+    'co2_por_kg_reciclado' => [      // kg de CO2 evitados por kg reciclado
+        'plastico' => 1.5, 'metal' => 4.0, 'carton' => 0.9,
+        'papel' => 1.0, 'vidrio' => 0.3, 'otro' => 0.5,
+    ],
+    'valor_usd_por_kg' => [          // valor aproximado si el material se vende (estimación)
+        'plastico' => 0.25, 'metal' => 0.80, 'carton' => 0.05,
+        'papel' => 0.10, 'vidrio' => 0.02, 'otro' => 0.10,
+    ],
     'precio_pupusa'  => 0.15,   // USD — para la equivalencia simpática
 ];
