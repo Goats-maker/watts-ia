@@ -191,10 +191,11 @@ function promedioComunidad(): array
 }
 
 /**
- * Detecta si el último mes subió más del 20% → alerta de anomalía.
+ * Detecta si un mes subió más del 20% → alerta de anomalía.
+ * $campo permite revisar 'kwh' (energía) o 'm3' (agua) sin duplicar código.
  * Devuelve ['hay' => bool, 'pct' => float, 'anterior' => array, 'ultimo' => array]
  */
-function detectarAnomalia(array $historial): array
+function detectarAnomalia(array $historial, string $campo = 'kwh'): array
 {
     $n = count($historial);
     if ($n < 2) {
@@ -202,8 +203,8 @@ function detectarAnomalia(array $historial): array
     }
     $anterior = $historial[$n - 2];
     $ultimo   = $historial[$n - 1];
-    $base = (float) $anterior['kwh'];
-    $pct  = $base > 0 ? (((float) $ultimo['kwh'] - $base) / $base) * 100 : 0.0;
+    $base = (float) ($anterior[$campo] ?? 0);
+    $pct  = $base > 0 ? (((float) ($ultimo[$campo] ?? 0) - $base) / $base) * 100 : 0.0;
 
     return [
         'hay'      => $pct > 20,
@@ -269,5 +270,153 @@ function planLocal(float $kwh, array $ranking): array
             ],
         ],
         'ahorro_total_usd' => round($total, 2),
+    ];
+}
+
+/* ------------------------------------------------------------------
+ |  Módulo de AGUA — fórmulas y Plan B
+ * ------------------------------------------------------------------ */
+
+/** Historial de recibos de AGUA del hogar (más viejo primero). */
+function historialAgua(int $hogarId): array
+{
+    $st = db()->prepare(
+        "SELECT * FROM recibos WHERE hogar_id = ? AND tipo_servicio = 'agua' ORDER BY fecha ASC, id ASC"
+    );
+    $st->execute([$hogarId]);
+    return $st->fetchAll();
+}
+
+/** Último recibo de AGUA del hogar. */
+function ultimoReciboAgua(int $hogarId): ?array
+{
+    $st = db()->prepare(
+        "SELECT * FROM recibos WHERE hogar_id = ? AND tipo_servicio = 'agua' ORDER BY fecha DESC, id DESC LIMIT 1"
+    );
+    $st->execute([$hogarId]);
+    $r = $st->fetch();
+    return $r ?: null;
+}
+
+/** Tarifa del agua del hogar (USD por m³). */
+function tarifaAguaDe(?array $hogar): float
+{
+    return $hogar ? (float) $hogar['tarifa_agua'] : (float) cfg('tarifa_agua_default', 1.2);
+}
+
+/** Personas del hogar (para los usos que se multiplican por persona). */
+function personasDe(?array $hogar): int
+{
+    return max(1, (int) ($hogar['personas'] ?? 4));
+}
+
+function listaUsosAgua(int $hogarId): array
+{
+    $st = db()->prepare('SELECT * FROM usos_agua WHERE hogar_id = ? ORDER BY nombre');
+    $st->execute([$hogarId]);
+    return $st->fetchAll();
+}
+
+/** Litros al día de un solo uso: litros por uso × veces al día (× personas si aplica). */
+function litrosDiaUso(array $uso, int $personas): float
+{
+    $base = (float) $uso['litros_por_uso'] * (float) $uso['veces_dia'];
+    return !empty($uso['por_persona']) ? $base * $personas : $base;
+}
+
+/** Litros al día de todos los usos del hogar. */
+function litrosDiaTotales(int $hogarId, int $personas): float
+{
+    $total = 0.0;
+    foreach (listaUsosAgua($hogarId) as $uso) {
+        $total += litrosDiaUso($uso, $personas);
+    }
+    return $total;
+}
+
+/** m³ al mes = litros al día × 30 ÷ 1000 */
+function m3Mes(float $litrosDia): float
+{
+    return ($litrosDia * 30) / 1000;
+}
+
+/**
+ * Ranking de "devoradores de agua": cada uso con sus m³/mes,
+ * costo, % del consumo y semáforo (mismos umbrales que el de energía).
+ */
+function rankingUsosAgua(int $hogarId, int $personas, float $tarifaAgua, float $m3Base): array
+{
+    $filas = [];
+    foreach (listaUsosAgua($hogarId) as $u) {
+        $litros = litrosDiaUso($u, $personas);
+        $m3     = m3Mes($litros);
+        $pct    = $m3Base > 0 ? ($m3 / $m3Base) * 100 : 0.0;
+        $filas[] = [
+            'id'        => (int) $u['id'],
+            'nombre'    => $u['nombre'],
+            'categoria' => $u['categoria'],
+            'litros_uso'=> (float) $u['litros_por_uso'],
+            'veces'     => (float) $u['veces_dia'],
+            'por_persona' => !empty($u['por_persona']),
+            'litros_dia'=> $litros,
+            'm3'        => $m3,
+            'costo'     => $m3 * $tarifaAgua,
+            'pct'       => $pct,
+            'semaforo'  => semaforo($pct),
+        ];
+    }
+    usort($filas, fn($x, $y) => $y['m3'] <=> $x['m3']);
+    return $filas;
+}
+
+/** Plan de agua sin internet: plantillas por rango de consumo (m³/mes). */
+function planAguaLocal(float $m3, array $ranking): array
+{
+    $acc = [];
+
+    if ($m3 >= 20) {
+        $acc[] = ['titulo' => 'Revisar fugas de sanitarios', 'accion' => 'Echá un poco de colorante en el tanque: si el inodoro lo baja sin que lo uses, hay fuga.', 'costo_estimado_usd' => 2, 'ahorro_litros_mes' => 1200, 'ahorro_usd_mes' => 1.4];
+        $acc[] = ['titulo' => 'Ducha de 5 minutos', 'accion' => 'Poné un temporizador o una canción: menos de 5 minutos por persona al día.', 'costo_estimado_usd' => 0, 'ahorro_litros_mes' => 1800, 'ahorro_usd_mes' => 2.2];
+        $acc[] = ['titulo' => 'Regar temprano y con regadera', 'accion' => 'Regá temprano por la mañana y con regadera en vez de manguera.', 'costo_estimado_usd' => 6, 'ahorro_litros_mes' => 900, 'ahorro_usd_mes' => 1.1];
+    } elseif ($m3 >= 12) {
+        $acc[] = ['titulo' => 'Cubeta en vez de manguera', 'accion' => 'Lavar el carro y el patio con cubeta ahorra mucha agua frente a la manguera.', 'costo_estimado_usd' => 5, 'ahorro_litros_mes' => 800, 'ahorro_usd_mes' => 1.0];
+        $acc[] = ['titulo' => 'Lavar ropa con más ropa por carga', 'accion' => 'Usá la lavadora llena y el ciclo corto: menos cargas, menos litros.', 'costo_estimado_usd' => 0, 'ahorro_litros_mes' => 600, 'ahorro_usd_mes' => 0.7];
+        $acc[] = ['titulo' => 'Recoger el agua fría de la ducha', 'accion' => 'Mientras esperás el agua caliente, juntala en un balde y usala para el inodoro o las plantas.', 'costo_estimado_usd' => 8, 'ahorro_litros_mes' => 500, 'ahorro_usd_mes' => 0.6];
+    } else {
+        $acc[] = ['titulo' => 'Mantener el buen hábito', 'accion' => 'Tu consumo ya es bajo. Revisá que ninguna llave gotee y listo.', 'costo_estimado_usd' => 0, 'ahorro_litros_mes' => 300, 'ahorro_usd_mes' => 0.4];
+        $acc[] = ['titulo' => 'Reutilizar el agua de enjuague', 'accion' => 'El agua de lavar frutas o trastes sirve para las plantas.', 'costo_estimado_usd' => 0, 'ahorro_litros_mes' => 200, 'ahorro_usd_mes' => 0.3];
+    }
+
+    $top = $ranking[0] ?? null;
+    if ($top && $top['pct'] >= 30) {
+        $acc[] = [
+            'titulo'             => 'Atacar al más grande: ' . $top['nombre'],
+            'accion'             => 'Es tu uso más caro (' . number_format($top['pct'], 0) . '% del consumo). Reducí su frecuencia o duración.',
+            'costo_estimado_usd' => 0,
+            'ahorro_litros_mes'  => round($top['m3'] * 1000 * 0.15, 0),
+            'ahorro_usd_mes'     => round($top['costo'] * 0.15, 2),
+        ];
+    }
+
+    $usdTotal    = array_sum(array_column($acc, 'ahorro_usd_mes'));
+    $litrosTotal = array_sum(array_column($acc, 'ahorro_litros_mes'));
+
+    return [
+        'fuente'   => 'local',
+        'resumen'  => 'Plan de agua generado sin internet (plantilla por rango de consumo: '
+            . number_format($m3, 1) . ' m³/mes).',
+        'acciones' => $acc,
+        'reto'     => [
+            'titulo'      => 'Reto del agua · 30 días',
+            'meta_litros' => round($litrosTotal, 0),
+            'pasos'       => [
+                'Duchas de 5 minutos y llaves cerradas mientras nos enjabonamos.',
+                'Usar cubeta y regadera en vez de manguera.',
+                'Recoger el agua fría de la ducha y reutilizarla.',
+                'Medir cuánto bajó el recibo de agua y celebrar en familia.',
+            ],
+        ],
+        'ahorro_usd_total'    => round($usdTotal, 2),
+        'ahorro_litros_total' => round($litrosTotal, 0),
     ];
 }

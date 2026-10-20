@@ -148,6 +148,76 @@ class GeminiClient
         return $plan;
     }
 
+    /* ---------------- Recibo de agua → JSON ---------------- */
+
+    public function extraerReciboAgua(string $base64, string $mime): array
+    {
+        [$prompt, $schema] = self::cargarPrompt('recibo_agua');
+        return $this->llamada($base64, $mime, $prompt, $schema);
+    }
+
+    /* ---------------- Residuo → clasificación de reciclaje ---------------- */
+
+    public function clasificarResiduo(string $base64, string $mime): array
+    {
+        [$prompt, $schema] = self::cargarPrompt('residuo');
+        return $this->llamada($base64, $mime, $prompt, $schema);
+    }
+
+    /* ---------------- Plan de ahorro de agua ---------------- */
+
+    public function generarPlanAgua(array $datos): array
+    {
+        [$prompt, $schema] = self::cargarPrompt('plan_agua');
+        $prompt = str_replace('{DIAGNOSTICO}', json_encode($datos, JSON_UNESCAPED_UNICODE), $prompt);
+
+        $plan = $this->llamada('', '', $prompt, $schema);
+        $plan['fuente'] = 'ia';
+        $plan['ahorro_usd_total']    = round((float) array_sum(array_column($plan['acciones'] ?? [], 'ahorro_usd_mes')), 2);
+        $plan['ahorro_litros_total'] = round((float) array_sum(array_column($plan['acciones'] ?? [], 'ahorro_litros_mes')), 0);
+        return $plan;
+    }
+
+    /* ---------------- Plan de reciclaje ---------------- */
+
+    public function generarPlanReciclaje(array $datos): array
+    {
+        [$prompt, $schema] = self::cargarPrompt('plan_reciclaje');
+        $prompt = str_replace('{DIAGNOSTICO}', json_encode($datos, JSON_UNESCAPED_UNICODE), $prompt);
+
+        $plan = $this->llamada('', '', $prompt, $schema);
+        $plan['fuente'] = 'ia';
+        $plan['ingreso_estimado_usd'] = round((float) array_sum(array_column($plan['acciones'] ?? [], 'valor_estimado_usd')), 2);
+        return $plan;
+    }
+
+    /* ---------------- Plan unificado (energía + agua + reciclaje) ---------------- */
+
+    public function generarPlanUnificado(array $datos): array
+    {
+        [$prompt, $schema] = self::cargarPrompt('plan_unificado');
+        $prompt = str_replace('{DIAGNOSTICO}', json_encode($datos, JSON_UNESCAPED_UNICODE), $prompt);
+
+        $plan = $this->llamada('', '', $prompt, $schema);
+        $plan['fuente'] = 'ia';
+        $plan['ahorro_usd_total'] = round((float) array_sum(array_column($plan['acciones'] ?? [], 'ahorro_usd_mes')), 2);
+        return $plan;
+    }
+
+    /** Carga un prompt + su esquema JSON desde /prompts/<clave>.json */
+    private static function cargarPrompt(string $clave): array
+    {
+        $ruta = dirname(__DIR__) . '/prompts/' . basename($clave) . '.json';
+        if (!is_file($ruta)) {
+            throw new RuntimeException("Falta el archivo de prompt: prompts/{$clave}.json");
+        }
+        $datos = json_decode((string) file_get_contents($ruta), true);
+        if (!is_array($datos) || empty($datos['prompt']) || empty($datos['schema'])) {
+            throw new RuntimeException("El prompt prompts/{$clave}.json está mal formado.");
+        }
+        return [(string) $datos['prompt'], $datos['schema']];
+    }
+
     /* ---------------- Llamada HTTP ---------------- */
 
     private function llamada(string $base64, string $mime, string $prompt, array $schema): array

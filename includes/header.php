@@ -80,6 +80,7 @@ $versionCss = @filemtime(__DIR__ . '/../assets/css/app.css') ?: 1;
         <li class="nav-item"><a class="nav-link" href="index.php"><i class="bi bi-speedometer2"></i> Panel</a></li>
         <li class="nav-item"><a class="nav-link" href="recibos_subir.php"><i class="bi bi-camera"></i> Escanear recibo</a></li>
         <li class="nav-item"><a class="nav-link" href="aparatos.php"><i class="bi bi-plug-fill"></i> Aparatos</a></li>
+        <li class="nav-item"><a class="nav-link" href="agua.php"><i class="bi bi-droplet"></i> Agua</a></li>
         <li class="nav-item"><a class="nav-link" href="plan.php"><i class="bi bi-clipboard-check"></i> Plan</a></li>
         <li class="nav-item"><a class="nav-link" href="negocios.php"><i class="bi bi-shop"></i> Negocios</a></li>
         <li class="nav-item ms-lg-2">

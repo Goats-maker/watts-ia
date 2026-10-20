@@ -2,18 +2,24 @@
 $tituloPagina = 'Escanear recibo';
 require __DIR__ . '/includes/header.php';
 
-$error   = $_GET['error'] ?? '';
+// Un mismo formulario para los dos servicios: luz (kWh) o agua (m³).
+$servicio = ($_GET['servicio'] ?? 'energia') === 'agua' ? 'agua' : 'energia';
+$esAgua   = $servicio === 'agua';
+
+$error    = $_GET['error'] ?? '';
 $guardado = isset($_GET['guardado']);
 
 // Estado inicial del formulario (lo completa la IA o la persona a mano)
 $datos = [
-    'periodo'    => '',
-    'fecha'      => '',
-    'kwh'        => '',
-    'tarifa'     => '',
-    'cargo_fijo' => '',
-    'monto'      => '',
-    'notas'      => '',
+    'periodo'   => '',
+    'fecha'     => '',
+    'kwh'       => '',
+    'm3'        => '',
+    'tarifa'    => '',
+    'cargo_fijo'=> '',
+    'cargo_alcantarillado' => '',
+    'monto'     => '',
+    'notas'     => '',
 ];
 
 $iaDisponible = (new GeminiClient())->disponible();
@@ -32,11 +38,22 @@ $iaDisponible = (new GeminiClient())->disponible();
 <?php endif; ?>
 
 <header class="pagina-titulo mb-4">
-  <h1 class="h2 mb-2">Fotografiá tu recibo de luz</h1>
-  <p class="mb-0">
+  <h1 class="h2 mb-2">
+    <?php if ($esAgua): ?>Fotografiá tu recibo de agua<?php else: ?>Fotografiá tu recibo de luz<?php endif; ?>
+  </h1>
+  <p class="mb-3">
     La IA lo lee y llena los campos solos. Vos revisás, corregís si hace falta y recién ahí se guarda.
     Nunca guardamos la foto: solo los números.
   </p>
+
+  <div class="btn-group" role="group" aria-label="Elegir servicio">
+    <a href="recibos_subir.php" class="btn <?= $esAgua ? 'btn-outline-primary' : 'btn-primary fw-semibold' ?>">
+      <i class="bi bi-lightning-charge-fill" style="color:<?= $esAgua ? 'inherit' : 'var(--pilar-energia)' ?>"></i> Luz
+    </a>
+    <a href="recibos_subir.php?servicio=agua" class="btn <?= $esAgua ? 'btn-primary fw-semibold' : 'btn-outline-primary' ?>">
+      <i class="bi bi-droplet-fill" style="color:<?= $esAgua ? '#fff' : 'var(--pilar-agua)' ?>"></i> Agua
+    </a>
+  </div>
 </header>
 
 <div class="row g-4">
@@ -82,6 +99,7 @@ $iaDisponible = (new GeminiClient())->disponible();
         <form method="post" action="api/guardar_recibo.php" class="formulario-ia" id="formRecibo">
           <input type="hidden" name="hogar_id" value="<?= (int) $hogar['id'] ?>">
           <input type="hidden" name="origen" id="campoOrigen" value="manual">
+          <input type="hidden" name="tipo_servicio" value="<?= e($servicio) ?>">
 
           <div class="row g-3">
             <div class="col-md-6">
@@ -92,32 +110,61 @@ $iaDisponible = (new GeminiClient())->disponible();
               <label class="form-label">Fecha de emisión</label>
               <input type="date" class="form-control" name="fecha" id="fFecha" value="<?= e($datos['fecha']) ?>">
             </div>
-            <div class="col-md-4">
-              <label class="form-label">kWh consumidos</label>
-              <input type="number" step="0.01" min="0" class="form-control" name="kwh" id="fKwh"
-                     value="<?= e($datos['kwh']) ?>" required>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Tarifa ($/kWh)</label>
-              <input type="number" step="0.0001" min="0" class="form-control" name="tarifa" id="fTarifa"
-                     value="<?= e($datos['tarifa']) ?>" required>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Cargo fijo ($)</label>
-              <input type="number" step="0.01" min="0" class="form-control" name="cargo_fijo" id="fCargo"
-                     value="<?= e($datos['cargo_fijo']) ?>">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Monto total ($)</label>
-              <input type="number" step="0.01" min="0" class="form-control" name="monto" id="fMonto"
-                     value="<?= e($datos['monto']) ?>" required>
-            </div>
-            <div class="col-md-6 d-flex align-items-end">
-              <div class="form-text">
-                <i class="bi bi-info-circle"></i> La tarifa sale del propio recibo;
-                si el campo queda vacío se usa <?= usd(cfg('tarifa_default')) ?>/kWh.
+
+            <?php if ($esAgua): ?>
+              <div class="col-md-4">
+                <label class="form-label">m³ consumidos</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="m3" id="fM3"
+                       value="<?= e($datos['m3']) ?>" required>
               </div>
-            </div>
+              <div class="col-md-4">
+                <label class="form-label">Tarifa ($/m³)</label>
+                <input type="number" step="0.0001" min="0" class="form-control" name="tarifa" id="fTarifa"
+                       value="<?= e($datos['tarifa']) ?>">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Cargo fijo ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="cargo_fijo" id="fCargo"
+                       value="<?= e($datos['cargo_fijo']) ?>">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Alcantarillado ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="cargo_alcantarillado" id="fAlc"
+                       value="<?= e($datos['cargo_alcantarillado']) ?>">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Monto total ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="monto" id="fMonto"
+                       value="<?= e($datos['monto']) ?>" required>
+              </div>
+            <?php else: ?>
+              <div class="col-md-4">
+                <label class="form-label">kWh consumidos</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="kwh" id="fKwh"
+                       value="<?= e($datos['kwh']) ?>" required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Tarifa ($/kWh)</label>
+                <input type="number" step="0.0001" min="0" class="form-control" name="tarifa" id="fTarifa"
+                       value="<?= e($datos['tarifa']) ?>" required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Cargo fijo ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="cargo_fijo" id="fCargo"
+                       value="<?= e($datos['cargo_fijo']) ?>">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Monto total ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control" name="monto" id="fMonto"
+                       value="<?= e($datos['monto']) ?>" required>
+              </div>
+              <div class="col-md-6 d-flex align-items-end">
+                <div class="form-text">
+                  <i class="bi bi-info-circle"></i> La tarifa sale del propio recibo;
+                  si el campo queda vacío se usa <?= usd(cfg('tarifa_default')) ?>/kWh.
+                </div>
+              </div>
+            <?php endif; ?>
           </div>
 
           <div id="notaIA" class="alert alert-light border small mt-3 d-none"></div>
@@ -136,6 +183,8 @@ $iaDisponible = (new GeminiClient())->disponible();
 
 <script>
 (function () {
+  const modoIA = <?= json_encode($esAgua ? 'recibo_agua' : 'recibo') ?>;
+
   const input    = document.getElementById('inputFoto');
   const vista    = document.getElementById('vistaPrevia');
   const btnLeer  = document.getElementById('btnLeer');
@@ -144,14 +193,14 @@ $iaDisponible = (new GeminiClient())->disponible();
   const origen   = document.getElementById('campoOrigen');
   const notaIA   = document.getElementById('notaIA');
 
-  const campos = {
-    periodo:    document.getElementById('fPeriodo'),
-    fecha:      document.getElementById('fFecha'),
-    kwh:        document.getElementById('fKwh'),
-    tarifa:     document.getElementById('fTarifa'),
-    cargo_fijo: document.getElementById('fCargo'),
-    monto:      document.getElementById('fMonto')
-  };
+  // Solo existen los campos del servicio activo: buscamos cada uno y saltamos los que no.
+  const campos = {};
+  ['periodo', 'fecha', 'kwh', 'm3', 'tarifa', 'cargo_fijo', 'cargo_alcantarillado', 'monto'].forEach(function (k) {
+    campos[k] = document.getElementById({
+      periodo: 'fPeriodo', fecha: 'fFecha', kwh: 'fKwh', m3: 'fM3', tarifa: 'fTarifa',
+      cargo_fijo: 'fCargo', cargo_alcantarillado: 'fAlc', monto: 'fMonto'
+    }[k]);
+  });
 
   let dataURL = null;
 
@@ -159,8 +208,8 @@ $iaDisponible = (new GeminiClient())->disponible();
     const archivo = this.files && this.files[0];
     if (!archivo) return;
     const lector = new FileReader();
-    lector.onload = function (e) {
-      dataURL = e.target.result;
+    lector.onload = function (ev) {
+      dataURL = ev.target.result;
       vista.src = dataURL;
       vista.classList.remove('d-none');
       btnLeer.disabled = false;
@@ -173,14 +222,16 @@ $iaDisponible = (new GeminiClient())->disponible();
   btnLeer.addEventListener('click', async function () {
     if (!dataURL) return;
     btnLeer.disabled = true;
-    estado.textContent = 'Leyendo el recibo… esto toma pocos segundos.';
+    estado.textContent = modoIA === 'recibo_agua'
+      ? 'Leyendo el recibo de agua… esto toma pocos segundos.'
+      : 'Leyendo el recibo… esto toma pocos segundos.';
     chip.textContent = 'leyendo…';
 
     try {
       const r = await fetch('api/extraer.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagen: dataURL, modo: 'recibo' })
+        body: JSON.stringify({ imagen: dataURL, modo: modoIA })
       });
       const res = await r.json();
 
@@ -190,13 +241,13 @@ $iaDisponible = (new GeminiClient())->disponible();
 
       const d = res.datos || {};
       Object.keys(campos).forEach(function (k) {
-        if (d[k] !== undefined && d[k] !== null) campos[k].value = d[k];
+        if (campos[k] && d[k] !== undefined && d[k] !== null) campos[k].value = d[k];
       });
-      if (!campos.fecha.value && d.periodo) {
-        // sin fecha exacta: usamos el fin de mes como aproximación editable
-        const hoy = new Date();
-        campos.fecha.value = hoy.toISOString().slice(0, 10);
+      if (campos.fecha && !campos.fecha.value && d.periodo) {
+        // sin fecha exacta: usamos el día de hoy como aproximación editable
+        campos.fecha.value = new Date().toISOString().slice(0, 10);
       }
+      // En agua, la tarifa puede no venir: si quedó vacía mostramos la del hogar después de guardar.
 
       notaIA.innerHTML = '<i class="bi bi-stars text-warning"></i> <strong>Leído por la IA.</strong> '
         + (d.notas ? e(d.notas) + ' · ' : '')

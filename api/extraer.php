@@ -16,7 +16,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $entrada = json_decode((string) file_get_contents('php://input'), true) ?: [];
 
 $imagen = $entrada['imagen'] ?? '';
-$modo   = ($entrada['modo'] ?? 'recibo') === 'etiqueta' ? 'etiqueta' : 'recibo';
+
+// modos: recibo (luz), recibo_agua, etiqueta (placa del aparato), residuo (reciclaje)
+$modos = ['recibo', 'recibo_agua', 'etiqueta', 'residuo'];
+$modo  = in_array($entrada['modo'] ?? '', $modos, true) ? $entrada['modo'] : 'recibo';
 
 // 1. Validar el data URL
 if (!is_string($imagen) || !preg_match('#^data:(image/(?:jpeg|png|webp));base64,#', $imagen, $m)) {
@@ -61,9 +64,12 @@ if (!$ia->disponible()) {
 }
 
 try {
-    $datos = $modo === 'etiqueta'
-        ? $ia->extraerEtiqueta($base64, $mime)
-        : $ia->extraerRecibo($base64, $mime);
+    $datos = match ($modo) {
+        'recibo_agua' => $ia->extraerReciboAgua($base64, $mime),
+        'etiqueta'    => $ia->extraerEtiqueta($base64, $mime),
+        'residuo'     => $ia->clasificarResiduo($base64, $mime),
+        default       => $ia->extraerRecibo($base64, $mime),
+    };
 } catch (Throwable $ex) {
     jsonOut(['ok' => false, 'error' => $ex->getMessage(), 'plan_b' => true], 502);
 }

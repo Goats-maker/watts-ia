@@ -1,0 +1,34 @@
+{
+  "descripcion": "Plan de ahorro de agua para familias y pequeños negocios de Centroamérica.",
+  "prompt": "Sos un asesor de ahorro de agua para familias y pequeños negocios de Centroamérica.\nRecibís este diagnóstico en JSON: {DIAGNOSTICO}\nDevolvé SOLO un JSON con:\n- resumen: 2 frases habladas, motivadoras y sin clichés, mencionando los números reales.\n- acciones: 4 o 5 objetos con:\n    titulo (corto), accion (qué hacer exactamente, en 1 o 2 frases),\n    costo_estimado_usd (cuánto cuesta hacerlo, número, 0 si es gratis),\n    ahorro_litros_mes (cuántos litros se ahorran al mes, número, realista),\n    ahorro_usd_mes (cuánto se ahorra al mes en dólares, número)\n- reto: objeto con titulo (\"Reto del agua · 30 días\"), meta_litros (suma del ahorro mensual),\n  pasos (4 strings, uno por semana)\nEl ahorro mensual debe ser coherente con el consumo indicado: nunca supere el 35% del gasto mensual total.\nHablá como persona, sin lenguaje corporativo.",
+  "schema": {
+    "type": "OBJECT",
+    "properties": {
+      "resumen": { "type": "STRING" },
+      "acciones": {
+        "type": "ARRAY",
+        "items": {
+          "type": "OBJECT",
+          "properties": {
+            "titulo":             { "type": "STRING" },
+            "accion":             { "type": "STRING" },
+            "costo_estimado_usd": { "type": "NUMBER" },
+            "ahorro_litros_mes":  { "type": "NUMBER" },
+            "ahorro_usd_mes":     { "type": "NUMBER" }
+          },
+          "required": ["titulo", "accion", "costo_estimado_usd", "ahorro_litros_mes", "ahorro_usd_mes"]
+        }
+      },
+      "reto": {
+        "type": "OBJECT",
+        "properties": {
+          "titulo":       { "type": "STRING" },
+          "meta_litros":  { "type": "NUMBER" },
+          "pasos":        { "type": "ARRAY", "items": { "type": "STRING" } }
+        },
+        "required": ["titulo", "meta_litros", "pasos"]
+      }
+    },
+    "required": ["resumen", "acciones", "reto"]
+  }
+}

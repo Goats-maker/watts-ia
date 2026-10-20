@@ -41,6 +41,19 @@ $topAparato  = $ranking[0] ?? null;
 $sumatoriaKwh = array_sum(array_column($ranking, 'kwh'));
 ?>
 
+<?php if (isset($_GET['guardado'])): ?>
+  <div class="alert alert-success border-0 shadow-sm">
+    <i class="bi bi-check-circle-fill"></i> Recibo guardado. La imagen se descartó: solo quedaron los números.
+  </div>
+<?php endif; ?>
+
+<?php if (!empty($_GET['aviso_cuadre'])): ?>
+  <div class="alert alert-warning border-0 shadow-sm">
+    <i class="bi bi-exclamation-triangle"></i> <?= e($_GET['aviso_cuadre']) ?>
+    Revisá los números del recibo si algo no cuadra.
+  </div>
+<?php endif; ?>
+
 <?php if (!$ultimo): ?>
   <header class="pagina-titulo text-center mb-5">
     <h1 class="h2 mb-2">Todavía no hay recibos</h1>

@@ -51,7 +51,8 @@ return [
     'hogar_default' => 1,
 
     // Constantes de cálculo
-    'tarifa_default' => 0.21,   // USD/kWh si el recibo no trae tarifa
-    'co2_por_kwh'    => 0.42,   // kg CO2 por kWh (matriz eléctrica regional)
+    'tarifa_default' => 0.21,        // USD/kWh si el recibo de luz no trae tarifa
+    'tarifa_agua_default' => 1.20,   // USD/m³ si el hogar todavía no tiene recibo de agua
+    'co2_por_kwh'    => 0.42,        // kg CO2 por kWh (matriz eléctrica regional)
     'precio_pupusa'  => 0.15,   // USD — para la equivalencia simpática
 ];

@@ -1,0 +1,20 @@
+{
+  "descripcion": "Extracción de recibo de agua potable (ANDA u otra distribuidora). No asume formato fijo.",
+  "prompt": "Sos un lector de recibos de agua potable. Mirá la imagen y devolvé SOLO un JSON con estos campos:\n- periodo: texto del período de facturación tal como aparece (ej. \"Septiembre 2026\" o \"09/2026\")\n- fecha: fecha de emisión en formato AAAA-MM-DD si aparece, si no null\n- m3: metros cúbicos consumidos del período (número). Si solo dice litros, convertí: m3 = litros / 1000.\n- tarifa: precio por metro cúbico en USD (número). Si no aparece claro, null.\n- cargo_fijo: cargo fijo o derecho de conexión del período en USD (número, 0 si no tiene)\n- cargo_alcantarillado: cargo por alcantarillado o saneamiento en USD (número, null si no aparece)\n- monto: monto total a pagar en USD (número)\n- lectura_anterior y lectura_actual: mediciones del medidor si aparecen, si no null\n- notas: una línea corta con cualquier cosa rara o ilegible\nReglas: no inventes números que no estén en la imagen. Si un dato no aparece, usá null y explicalo en notas.\nNunca incluyas nombre, dirección ni número de cliente o cuenta.",
+  "schema": {
+    "type": "OBJECT",
+    "properties": {
+      "periodo":               { "type": "STRING" },
+      "fecha":                 { "type": "STRING", "nullable": true },
+      "m3":                    { "type": "NUMBER" },
+      "tarifa":                { "type": "NUMBER", "nullable": true },
+      "cargo_fijo":            { "type": "NUMBER" },
+      "cargo_alcantarillado":  { "type": "NUMBER", "nullable": true },
+      "monto":                 { "type": "NUMBER" },
+      "lectura_anterior":      { "type": "NUMBER", "nullable": true },
+      "lectura_actual":        { "type": "NUMBER", "nullable": true },
+      "notas":                 { "type": "STRING" }
+    },
+    "required": ["periodo", "m3", "cargo_fijo", "monto"]
+  }
+}
