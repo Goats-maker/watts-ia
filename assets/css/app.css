@@ -1,11 +1,17 @@
 :root {
-  --watts-oscuro: #101827;
-  --watts-verde: #22c55e;
-  --watts-amarillo: #f5b301;
+  /* Colores base (heredados del diseño original) */
+  --gd-oscuro: #101827;
+  --gd-verde: #22c55e;
+  --gd-amarillo: #f5b301;
   --aura-violeta: #a855f7;
   --aura-fucsia: #e879f9;
   --aura-plata: #cbd5e1;
   --tinta: #1b1230;
+
+  /* Paleta Guardianes del Planeta: reciclaje (verde), agua (azul), energía (amarillo) */
+  --pilar-reciclaje: #16a34a;
+  --pilar-agua: #0ea5e9;
+  --pilar-energia: #f5b301;
 }
 
 * { box-sizing: border-box; }

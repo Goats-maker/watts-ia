@@ -11,7 +11,7 @@ $hogar = $hogar ?? hogarActual();
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title><?= e($tituloPagina) ?> · WATTS·IA</title>
+<title><?= e($tituloPagina) ?> · Guardianes del Planeta</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
 <?php
@@ -68,7 +68,9 @@ $versionCss = @filemtime(__DIR__ . '/../assets/css/app.css') ?: 1;
 <nav class="navbar navbar-expand-lg navbar-dark sticky-top">
   <div class="container">
     <a class="navbar-brand fw-bold" href="index.php">
-      <i class="bi bi-lightning-charge-fill text-warning"></i> WATTS·IA
+      <!-- Logo: tres íconos = los tres pilares (energía, agua, reciclaje) + nombre -->
+      <i class="bi bi-lightning-charge-fill" style="color:var(--pilar-energia)"></i><i class="bi bi-droplet-fill ms-1" style="color:var(--pilar-agua)"></i><i class="bi bi-recycle ms-1" style="color:var(--pilar-reciclaje)"></i>
+      <span class="ms-2">Guardianes del Planeta</span>
     </a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#menu">
       <span class="navbar-toggler-icon"></span>

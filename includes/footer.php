@@ -1,7 +1,8 @@
 </main>
 
 <footer class="text-center text-secondary small py-4">
-  WATTS·IA · PHP + MySQL + Gemini + Chart.js · Solo se guardan números: la foto se descarta tras la extracción.
+  <strong>Guardianes del Planeta</strong> · Ahorrá energía, cuidá el agua, reciclá el resto.<br>
+  PHP + MySQL + Gemini + Chart.js · Solo se guardan números: la foto se descarta tras la extracción.
   Alineado con los ODS 7, 12 y 13.
 </footer>
 

@@ -1,9 +1,10 @@
--- WATTS·IA — esquema MySQL (XAMPP)
+-- Guardianes del Planeta — esquema MySQL (XAMPP)
 -- Importar desde phpMyAdmin → Importar → elegir este archivo.
+-- (Instalación nueva. Si ya tenés datos en watts_ia, usá sql/migracion_01_renombre_bd.sql)
 
-DROP DATABASE IF EXISTS watts_ia;
-CREATE DATABASE watts_ia CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE watts_ia;
+DROP DATABASE IF EXISTS guardianes_del_planeta;
+CREATE DATABASE guardianes_del_planeta CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE guardianes_del_planeta;
 
 -- Hogares / negocios. Solo se guardan NÚMEROS: nunca nombre, dirección ni cliente.
 CREATE TABLE hogares (

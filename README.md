@@ -1,7 +1,9 @@
-# WATTS·IA — Tu recibo de luz, explicado por la IA
+# Guardianes del Planeta — Ahorrá energía, cuidá el agua, reciclá el resto
 
 Fotografiás el recibo de energía, la IA lo lee, grafica tu consumo, descubre qué aparato te
 cuesta más y arma un plan de ahorro familiar con un reto de 30 días.
+
+*(Sistema ampliado: además de energía, ahora también cubre agua y reciclaje.)*
 
 **Stack:** PHP 8.2 (puro) · MySQL · API REST de Gemini (multimodal) · Chart.js · Bootstrap 5
 **Costo:** $0 · **ODS:** 7, 12 y 13
@@ -10,13 +12,18 @@ cuesta más y arma un plan de ahorro familiar con un reto de 30 días.
 
 ## Instalación (XAMPP)
 
-1. **Copiar el proyecto** a `C:\xampp\htdocs\watts-ia`.
+1. **Copiar el proyecto** a `C:\xampp\htdocs\guardianes-del-planeta`.
 2. **Crear la base de datos:** abrir phpMyAdmin → *Importar* → elegir `database/schema.sql` → Continuar.
-   Esto crea la base `watts_ia` con 4 tablas y datos de demo (1 hogar, 1 pupusería, 5 recibos, 7 aparatos).
+   Esto crea la base `guardianes_del_planeta` con las tablas y datos de demo.
    > Si lo hacés por consola, usá redirección directa para no dañar los acentos:
    > `cmd /c "C:\xampp\mysql\bin\mysql.exe -u root < database\schema.sql"`
    > (PowerShell con `Get-Content` lee el archivo como ANSI y rompe las tildes).
-3. **Abrir** `http://localhost/watts-ia/index.php`.
+3. **Abrir** `http://localhost/guardianes-del-planeta/index.php`.
+
+   > **Ya tenés datos en `watts_ia`?** No importes el schema: ejecutá en su lugar
+   > `sql/migracion_01_renombre_bd.sql`, que copia todo a `guardianes_del_planeta`
+   > sin tocar la base vieja (queda como respaldo).
+
 4. **API key de Gemini (opcional):**
    - Conseguir una en [Google AI Studio](https://aistudio.google.com/apikey) (nivel gratis).
    - Variable de entorno `GEMINI_API_KEY`, o bien crear `config.local.php` (ver *Secretos*, abajo).
@@ -53,7 +60,9 @@ Si el archivo no existe, se recurre a las variables de entorno `GEMINI_API_KEY` 
 config.php              configuración central (BD, Gemini, constantes)
 config.local.php        secretos locales (ignorado por Git)
 .gitignore              qué archivos no suben a GitHub
-database/schema.sql     esquema MySQL + datos de demo
+database/schema.sql     esquema MySQL + datos de demo (instalación nueva)
+sql/                    migraciones para instalaciones existentes
+prompts/                prompts y esquemas JSON que se le mandan a la IA
 includes/
   db.php                conexión PDO con consultas preparadas
   helpers.php           fórmulas (kWh, costo, semáforo, anomalía) + planes locales

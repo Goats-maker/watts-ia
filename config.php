@@ -1,6 +1,6 @@
 <?php
 /**
- * WATTS·IA — configuración central.
+ * Guardianes del Planeta — configuración central.
  *
  * ATENCIÓN: este archivo SÍ sube a GitHub, así que acá NO van secretos.
  * La API key de Gemini y la contraseña de MySQL viven en `config.local.php`,
@@ -34,7 +34,7 @@ return [
     'db' => [
         'host'    => '127.0.0.1',
         'port'    => 3306,
-        'name'    => 'watts_ia',
+        'name'    => 'guardianes_del_planeta',
         'user'    => 'root',
         'pass'    => $dbPass,           // ver config.local.php
         'charset' => 'utf8mb4',
